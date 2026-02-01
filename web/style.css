@@ -5,7 +5,7 @@
 }
 
 :root {
-    --bg-primary: #f5f4ef;
+    --bg-primary: #f6f6f6;
     --bg-input: #ffffff;
     --text-primary: #1a1a1a;
     --text-secondary: #5a5a5a;
@@ -73,22 +73,23 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 1.5rem;
     padding: 0.875rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     transition: box-shadow 0.2s, border-color 0.2s;
     width: 672px;
-    height: 122px;
+    max-height: 400px;
     margin: 0 auto;
 }
 
 .input-box:focus-within {
     border-color: #ccc;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 
 .input-box textarea {
-    flex: 1;
     width: 100%;
+    min-height: 72px;
+    max-height: 160px;
     padding: 0;
     border: none;
     background: transparent;
@@ -98,6 +99,26 @@ body {
     resize: none;
     outline: none;
     line-height: 1.5;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.input-box textarea::-webkit-scrollbar {
+    width: 8px;
+}
+
+.input-box textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.input-box textarea::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.input-box textarea::-webkit-scrollbar-thumb:hover {
+    background: #ccc;
 }
 
 .input-box textarea::placeholder {
@@ -188,7 +209,7 @@ body {
     border-radius: 1.25rem;
     align-self: flex-end;
     max-width: 80%;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .message.assistant {
@@ -204,7 +225,7 @@ body {
 }
 
 .message .content code {
-    background: rgba(0,0,0,0.05);
+    background: rgba(0, 0, 0, 0.05);
     padding: 0.125rem 0.375rem;
     border-radius: 0.25rem;
     font-family: 'SF Mono', 'Fira Code', Monaco, 'Courier New', monospace;
@@ -279,7 +300,8 @@ body {
     margin-bottom: 0;
 }
 
-.message .content ul, .message .content ol {
+.message .content ul,
+.message .content ol {
     margin: 0.5rem 0;
     padding-left: 1.5rem;
 }
@@ -288,15 +310,25 @@ body {
     margin: 0.25rem 0;
 }
 
-.message .content h1, .message .content h2, .message .content h3 {
+.message .content h1,
+.message .content h2,
+.message .content h3 {
     margin: 1rem 0 0.5rem 0;
     font-family: Georgia, 'Times New Roman', serif;
     font-weight: 500;
 }
 
-.message .content h1 { font-size: 1.5rem; }
-.message .content h2 { font-size: 1.25rem; }
-.message .content h3 { font-size: 1.125rem; }
+.message .content h1 {
+    font-size: 1.5rem;
+}
+
+.message .content h2 {
+    font-size: 1.25rem;
+}
+
+.message .content h3 {
+    font-size: 1.125rem;
+}
 
 .message .content blockquote {
     border-left: 3px solid var(--border-color);
@@ -387,8 +419,18 @@ body {
 }
 
 @keyframes typing {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
-    30% { transform: translateY(-0.4rem); opacity: 0.8; }
+
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+        opacity: 0.3;
+    }
+
+    30% {
+        transform: translateY(-0.4rem);
+        opacity: 0.8;
+    }
 }
 
 /* Footer */
@@ -398,8 +440,7 @@ footer {
 
 footer .input-box {
     width: 100%;
-    height: auto;
-    min-height: 122px;
+    max-height: 400px;
 }
 
 .footer-info {

@@ -25,7 +25,13 @@ function init() {
     formChat.addEventListener('submit', handleSubmit);
     inputEmpty.addEventListener('keydown', handleKeydown);
     inputChat.addEventListener('keydown', handleKeydown);
+    inputEmpty.addEventListener('input', handleInput);
+    inputChat.addEventListener('input', handleInput);
     messagesEl.addEventListener('click', handleCopy);
+
+    // Initialize textarea heights
+    autoResizeTextarea(inputEmpty);
+    autoResizeTextarea(inputChat);
 }
 
 // Get active input
@@ -44,6 +50,7 @@ async function handleSubmit(e) {
     // Add user message
     messages.push({ role: 'user', content });
     input.value = '';
+    autoResizeTextarea(input);
 
     // Switch to chat state
     if (messages.length === 1) {
@@ -152,6 +159,27 @@ async function streamResponse(assistantIndex) {
     const totalTime = performance.now() - startTime;
     const tokensPerSecond = tokenCount / (totalTime / 1000);
     statsEl.textContent = `${tokenCount} tokens | ${tokensPerSecond.toFixed(1)} tok/s | TTFT: ${ttft.toFixed(0)}ms`;
+}
+
+// Handle input changes
+function handleInput(e) {
+    autoResizeTextarea(e.target);
+}
+
+// Auto-resize textarea
+function autoResizeTextarea(textarea) {
+    // Reset height to min-height to get the correct scrollHeight
+    textarea.style.height = '72px';
+
+    // Set the height to match content, with a minimum of 72px (3 lines)
+    // and maximum of 160px (then scroll kicks in)
+    const minHeight = 48;
+    const maxHeight = 160;
+    const scrollHeight = textarea.scrollHeight;
+
+    if (scrollHeight > minHeight) {
+        textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
+    }
 }
 
 // Handle keyboard shortcuts
