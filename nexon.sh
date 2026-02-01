@@ -89,8 +89,9 @@ start() {
     check_mlx_lm
 
     if [ -f "$PID_FILE" ]; then
-        if pgrep -F "$PID_FILE" > /dev/null 2>&1; then
-            echo "Nexon is already running (PID: $(cat $PID_FILE))"
+        read OLD_MLX_PID OLD_WEB_PID < "$PID_FILE"
+        if [ -n "$OLD_MLX_PID" ] && kill -0 "$OLD_MLX_PID" 2>/dev/null; then
+            echo "Nexon is already running (MLX PID: $OLD_MLX_PID)"
             return 1
         fi
         rm -f "$PID_FILE"
@@ -113,14 +114,24 @@ start() {
 
     # Wait for server to start
     echo -n "Waiting for model to load"
+    SERVER_READY=false
     for i in {1..60}; do
         if curl -s "http://localhost:$MLX_PORT/v1/models" > /dev/null 2>&1; then
             echo " ready!"
+            SERVER_READY=true
             break
         fi
         echo -n "."
         sleep 1
     done
+
+    if [ "$SERVER_READY" = false ]; then
+        echo " timeout!"
+        echo "Error: MLX server failed to start. Check logs: nexon logs"
+        kill $MLX_PID 2>/dev/null
+        rm -f "$PID_FILE"
+        exit 1
+    fi
 
     # Start web server (with proxy for token filtering)
     python3 "$SCRIPT_DIR/nexon-server.py" --mlx-port $MLX_PORT --web-port $WEB_PORT >> "$LOG_FILE" 2>&1 &
