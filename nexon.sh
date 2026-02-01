@@ -16,7 +16,6 @@ check_mlx_lm() {
     fi
 }
 PID_FILE="$SCRIPT_DIR/.nexon.pid"
-LOG_FILE="$SCRIPT_DIR/.nexon.log"
 
 # Defaults (can be overridden by env vars or flags)
 MODEL="${NEXON_MODEL:-}"
@@ -25,14 +24,13 @@ MLX_PORT="${NEXON_PORT:-8080}"
 WEB_PORT=3000
 
 usage() {
-    echo "Usage: $0 [OPTIONS] {start|stop|restart|status|logs}"
+    echo "Usage: $0 [OPTIONS] {start|stop|restart|status}"
     echo ""
     echo "Commands:"
     echo "  start   - Start mlx_lm server and web UI"
     echo "  stop    - Stop all services"
     echo "  restart - Restart all services"
     echo "  status  - Show running status"
-    echo "  logs    - Tail the log file"
     echo ""
     echo "Options:"
     echo "  -m, --model PATH     Model path or HuggingFace ID"
@@ -106,9 +104,9 @@ start() {
 
     # Start mlx_lm server
     if [ -n "$ADAPTER" ]; then
-        python3 -m mlx_lm.server --model "$MODEL" --adapter-path "$ADAPTER" --port $MLX_PORT >> "$LOG_FILE" 2>&1 &
+        python3 -m mlx_lm.server --model "$MODEL" --adapter-path "$ADAPTER" --port $MLX_PORT >/dev/null 2>&1 &
     else
-        python3 -m mlx_lm.server --model "$MODEL" --port $MLX_PORT >> "$LOG_FILE" 2>&1 &
+        python3 -m mlx_lm.server --model "$MODEL" --port $MLX_PORT >/dev/null 2>&1 &
     fi
     MLX_PID=$!
 
@@ -127,14 +125,14 @@ start() {
 
     if [ "$SERVER_READY" = false ]; then
         echo " timeout!"
-        echo "Error: MLX server failed to start. Check logs: nexon logs"
+        echo "Error: MLX server failed to start."
         kill $MLX_PID 2>/dev/null
         rm -f "$PID_FILE"
         exit 1
     fi
 
     # Start web server (with proxy for token filtering)
-    python3 "$SCRIPT_DIR/nexon-server.py" --mlx-port $MLX_PORT --web-port $WEB_PORT --model "$MODEL" >> "$LOG_FILE" 2>&1 &
+    python3 "$SCRIPT_DIR/nexon-server.py" --mlx-port $MLX_PORT --web-port $WEB_PORT --model "$MODEL" >/dev/null 2>&1 &
     WEB_PID=$!
 
     # Save PIDs
@@ -145,7 +143,6 @@ start() {
     echo "  MLX server PID: $MLX_PID"
     echo "  Web server PID: $WEB_PID"
     echo ""
-    echo "Logs: nexon logs"
     echo "Stop: nexon stop"
 
     # Open browser
@@ -205,19 +202,10 @@ status() {
     echo "Web: http://localhost:$WEB_PORT"
 }
 
-logs() {
-    if [ -f "$LOG_FILE" ]; then
-        tail -f "$LOG_FILE"
-    else
-        echo "No log file found"
-    fi
-}
-
 case "${COMMAND:-}" in
     start)   start ;;
     stop)    stop ;;
     restart) restart ;;
     status)  status ;;
-    logs)    logs ;;
     *)       usage ;;
 esac
