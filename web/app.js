@@ -6,6 +6,7 @@ let messages = [];
 let isGenerating = false;
 
 // DOM Elements
+const loadingState = document.getElementById('loading-state');
 const emptyState = document.getElementById('empty-state');
 const chatState = document.getElementById('chat-state');
 const messagesEl = document.getElementById('messages');
@@ -19,8 +20,47 @@ const statsEl = document.getElementById('stats');
 // Configure marked
 marked.setOptions({ breaks: true, gfm: true });
 
+// Check if model is ready
+async function checkHealth() {
+    try {
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+        return data.ready;
+    } catch {
+        return false;
+    }
+}
+
+// Wait for model to be ready
+async function waitForModel() {
+    const loadingText = loadingState.querySelector('.loading-text');
+    let dots = 0;
+
+    const updateText = () => {
+        dots = (dots + 1) % 4;
+        loadingText.textContent = 'Loading model' + '.'.repeat(dots);
+    };
+
+    const textInterval = setInterval(updateText, 500);
+
+    while (true) {
+        const ready = await checkHealth();
+        if (ready) {
+            clearInterval(textInterval);
+            loadingState.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            inputEmpty.focus();
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
 // Initialize
-function init() {
+async function init() {
+    // Wait for model to be ready first
+    await waitForModel();
+
     formEmpty.addEventListener('submit', handleSubmit);
     formChat.addEventListener('submit', handleSubmit);
     inputEmpty.addEventListener('keydown', handleKeydown);
@@ -63,7 +103,7 @@ async function handleSubmit(e) {
 
     // Add placeholder for assistant response
     const assistantIndex = messages.length;
-    messages.push({ role: 'assistant', content: '', isStreaming: true });
+    messages.push({ role: 'assistant', content: '', thinking: '', isStreaming: true, isThinking: true });
     renderMessages();
 
     // Disable input while generating
@@ -135,6 +175,20 @@ async function streamResponse(assistantIndex) {
             try {
                 const data = JSON.parse(jsonStr);
                 const content = data.choices?.[0]?.delta?.content;
+                const thinking = data.choices?.[0]?.delta?.thinking;
+                const thinkingDone = data.choices?.[0]?.delta?.thinking_done;
+
+                // Stream thinking tokens
+                if (thinking) {
+                    messages[assistantIndex].thinking += thinking;
+                    renderMessages();
+                }
+
+                // Thinking done - collapse the section
+                if (thinkingDone) {
+                    messages[assistantIndex].isThinking = false;
+                    renderMessages();
+                }
 
                 if (content) {
                     if (firstToken) {
@@ -224,8 +278,27 @@ function renderMessages() {
             : escapeHtml(m.content);
 
         let html = `
-            <div class="message ${m.role}${m.isError ? ' error' : ''}">
-                <div class="content">${content}`;
+            <div class="message ${m.role}${m.isError ? ' error' : ''}">`;
+
+        // Add thinking section for assistant messages with thinking content
+        if (m.role === 'assistant' && m.thinking) {
+            const isOpen = m.isThinking ? ' open' : '';
+            const label = m.isThinking ? 'Thinking...' : 'Thought for a brief moment';
+            html += `
+                <details class="thinking-section"${isOpen}>
+                    <summary>
+                        <svg class="thinking-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4"></path>
+                            <path d="M12 8h.01"></path>
+                        </svg>
+                        <span>${label}</span>
+                    </summary>
+                    <div class="thinking-content">${marked.parse(m.thinking)}</div>
+                </details>`;
+        }
+
+        html += `<div class="content">${content}`;
 
         if (m.isStreaming && !m.content) {
             html += `
