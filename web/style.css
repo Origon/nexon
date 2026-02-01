@@ -13,7 +13,7 @@
     --accent: #c97e60;
     --accent-bg: #e8d5cd;
     --border-color: #e5e4df;
-    --success: #52c77d;
+    --success: #16A34A;
     --error: #e85c5c;
 }
 
@@ -67,16 +67,17 @@ body {
 /* Input box - shared */
 .input-box {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 0.5rem;
     background: var(--bg-input);
     border: 1px solid var(--border-color);
-    border-radius: 1.5rem;
-    padding: 0.875rem;
+    border-radius: 30px;
+    padding: 0.625rem 0.625rem 0.625rem 1.5rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     transition: box-shadow 0.2s, border-color 0.2s;
     width: 672px;
-    max-height: 400px;
+    min-height: 52px;
     margin: 0 auto;
 }
 
@@ -88,9 +89,9 @@ body {
 
 .input-box textarea {
     width: 100%;
-    min-height: 72px;
+    min-height: 24px;
     max-height: 160px;
-    padding: 0;
+    padding: 0.3125rem 0;
     border: none;
     background: transparent;
     color: var(--text-primary);
@@ -129,12 +130,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.5rem;
+    flex-shrink: 0;
 }
 
 .send-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     padding: 0;
     background: var(--accent-bg);
     color: var(--accent);
@@ -148,10 +149,13 @@ body {
     flex-shrink: 0;
 }
 
-.send-btn::before {
-    content: "↑";
-    font-weight: 600;
-    font-size: 1.25rem;
+.send-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.send-btn svg path {
+    stroke: currentColor;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -440,7 +444,6 @@ footer {
 
 footer .input-box {
     width: 100%;
-    max-height: 400px;
 }
 
 .footer-info {

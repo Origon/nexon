@@ -168,18 +168,16 @@ function handleInput(e) {
 
 // Auto-resize textarea
 function autoResizeTextarea(textarea) {
-    // Reset height to min-height to get the correct scrollHeight
-    textarea.style.height = '72px';
+    // Reset height to get the correct scrollHeight
+    textarea.style.height = 'auto';
 
-    // Set the height to match content, with a minimum of 72px (3 lines)
+    // Set the height to match content, with a minimum of 24px (1 line)
     // and maximum of 160px (then scroll kicks in)
-    const minHeight = 48;
+    const minHeight = 24;
     const maxHeight = 160;
     const scrollHeight = textarea.scrollHeight;
 
-    if (scrollHeight > minHeight) {
-        textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
-    }
+    textarea.style.height = Math.max(minHeight, Math.min(scrollHeight, maxHeight)) + 'px';
 }
 
 // Handle keyboard shortcuts
