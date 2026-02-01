@@ -99,6 +99,7 @@ Style:
                 self.end_headers()
 
                 thinking_done = False
+                parser = HarmonyParser()
 
                 for line in resp:
                     line = line.decode()
@@ -107,6 +108,14 @@ Style:
 
                     payload = line[6:].strip()
                     if payload == "[DONE]":
+                        # Flush any remaining buffer
+                        flushed = parser.flush()
+                        if flushed["thinking"]:
+                            self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(flushed["thinking"])}}}}}]}}\n\n'.encode())
+                        if flushed["content"]:
+                            clean = self._clean_special_tokens(flushed["content"])
+                            if clean:
+                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
                         self.wfile.write(b"data: [DONE]\n\n")
                         self.wfile.flush()
                         break
@@ -117,24 +126,38 @@ Style:
                         content = delta.get("content", "")
                         reasoning = delta.get("reasoning", "")
 
-                        # Stream reasoning (thinking) in real-time
+                        # Handle explicit reasoning field (some models use this)
                         if reasoning:
                             self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(reasoning)}}}}}]}}\n\n'.encode())
                             self.wfile.flush()
 
-                        # Stream content
+                        # Parse content for inline reasoning (Harmony, <think> tags, etc.)
                         if content:
-                            # Signal that thinking is done (first content token)
-                            if not thinking_done:
+                            parsed = parser.parse(content)
+
+                            # Stream thinking tokens
+                            if parsed["thinking"]:
+                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(parsed["thinking"])}}}}}]}}\n\n'.encode())
+                                self.wfile.flush()
+
+                            # Signal thinking is done
+                            if parsed["thinking_done"] and not thinking_done:
                                 self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
                                 self.wfile.flush()
                                 thinking_done = True
 
-                            # Clean and stream content
-                            clean = re.sub(r'<\|[^|]*\|>', '', content)
-                            if clean:
-                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
-                                self.wfile.flush()
+                            # Stream content
+                            if parsed["content"]:
+                                # Signal thinking done for plain format (no explicit marker)
+                                if not thinking_done and parser.format == "plain":
+                                    self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
+                                    self.wfile.flush()
+                                    thinking_done = True
+
+                                clean = self._clean_special_tokens(parsed["content"])
+                                if clean:
+                                    self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
+                                    self.wfile.flush()
 
                         # Handle finish
                         if chunk.get("choices", [{}])[0].get("finish_reason"):
@@ -159,11 +182,126 @@ Style:
         # Remove incomplete tags at the end
         if '<|' in text:
             text = text.split('<|')[0]
-        if '<think>' in text:
-            text = text.replace('<think>', '')
-        if '</think>' in text:
-            text = text.replace('</think>', '')
         return text
+
+
+class HarmonyParser:
+    """
+    Unified parser for different reasoning model output formats:
+    - Harmony (gpt-oss): analysis...assistantfinal...
+    - Think tags (Nemotron, DeepSeek): <think>...</think>
+    - Plain content (non-reasoning models)
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.buffer = ""
+        self.mode = "detect"  # detect, thinking, content
+        self.format = None    # harmony, think_tags, plain
+
+    def parse(self, chunk: str) -> dict:
+        """
+        Parse a chunk of streamed content.
+        Returns: {"thinking": str, "content": str, "thinking_done": bool}
+        """
+        result = {"thinking": "", "content": "", "thinking_done": False}
+
+        if not chunk:
+            return result
+
+        self.buffer += chunk
+
+        # Detection phase - figure out the format
+        if self.mode == "detect":
+            # Check for Harmony format (starts with "analysis")
+            if self.buffer.lower().startswith("analysis"):
+                self.format = "harmony"
+                self.mode = "thinking"
+                # Remove "analysis" prefix and send rest as thinking
+                thinking = re.sub(r'^analysis\s*', '', self.buffer, flags=re.IGNORECASE)
+                result["thinking"] = thinking
+                self.buffer = ""
+                return result
+
+            # Check for <think> tag
+            if "<think>" in self.buffer:
+                self.format = "think_tags"
+                self.mode = "thinking"
+                # Extract content after <think>
+                parts = self.buffer.split("<think>", 1)
+                if parts[0]:
+                    result["content"] = parts[0]
+                if len(parts) > 1:
+                    result["thinking"] = parts[1]
+                self.buffer = ""
+                return result
+
+            # If we have enough content and no markers, assume plain
+            if len(self.buffer) > 20:
+                self.format = "plain"
+                self.mode = "content"
+                result["content"] = self.buffer
+                self.buffer = ""
+                return result
+
+            # Still detecting, buffer more
+            return result
+
+        # Harmony format: look for "assistantfinal" marker
+        if self.format == "harmony":
+            if self.mode == "thinking":
+                if "assistantfinal" in self.buffer.lower():
+                    parts = re.split(r'assistantfinal', self.buffer, flags=re.IGNORECASE)
+                    result["thinking"] = parts[0]
+                    result["thinking_done"] = True
+                    self.mode = "content"
+                    if len(parts) > 1:
+                        result["content"] = parts[1]
+                    self.buffer = ""
+                else:
+                    result["thinking"] = self.buffer
+                    self.buffer = ""
+            else:
+                result["content"] = self.buffer
+                self.buffer = ""
+            return result
+
+        # Think tags format: look for </think>
+        if self.format == "think_tags":
+            if self.mode == "thinking":
+                if "</think>" in self.buffer:
+                    parts = self.buffer.split("</think>", 1)
+                    result["thinking"] = parts[0]
+                    result["thinking_done"] = True
+                    self.mode = "content"
+                    if len(parts) > 1:
+                        result["content"] = parts[1]
+                    self.buffer = ""
+                else:
+                    result["thinking"] = self.buffer
+                    self.buffer = ""
+            else:
+                result["content"] = self.buffer
+                self.buffer = ""
+            return result
+
+        # Plain format
+        result["content"] = self.buffer
+        self.buffer = ""
+        return result
+
+    def flush(self) -> dict:
+        """Flush any remaining buffer"""
+        result = {"thinking": "", "content": "", "thinking_done": False}
+        if self.buffer:
+            if self.mode == "thinking":
+                result["thinking"] = self.buffer
+            else:
+                result["content"] = self.buffer
+            self.buffer = ""
+        return result
 
     def do_OPTIONS(self):
         self.send_response(200)

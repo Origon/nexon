@@ -103,7 +103,7 @@ async function handleSubmit(e) {
 
     // Add placeholder for assistant response
     const assistantIndex = messages.length;
-    messages.push({ role: 'assistant', content: '', thinking: '', isStreaming: true, isThinking: true });
+    messages.push({ role: 'assistant', content: '', thinking: '', isStreaming: true, isThinking: true, showThinking: true });
     renderMessages();
 
     // Disable input while generating
@@ -184,7 +184,7 @@ async function streamResponse(assistantIndex) {
                     renderMessages();
                 }
 
-                // Thinking done - collapse the section
+                // Thinking done - just update state
                 if (thinkingDone) {
                     messages[assistantIndex].isThinking = false;
                     renderMessages();
@@ -280,19 +280,17 @@ function renderMessages() {
         let html = `
             <div class="message ${m.role}${m.isError ? ' error' : ''}">`;
 
-        // Add thinking section for assistant messages with thinking content
-        if (m.role === 'assistant' && m.thinking) {
-            const isOpen = m.isThinking ? ' open' : '';
-            const label = m.isThinking ? 'Thinking...' : 'Thought for a brief moment';
+        // Add thinking indicator (collapsed, click to expand)
+        if (m.role === 'assistant' && m.thinking && m.showThinking !== false) {
             html += `
-                <details class="thinking-section"${isOpen}>
+                <details class="thinking-section">
                     <summary>
                         <svg class="thinking-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
                             <path d="M12 16v-4"></path>
                             <path d="M12 8h.01"></path>
                         </svg>
-                        <span>${label}</span>
+                        <span>Thinking</span>
                     </summary>
                     <div class="thinking-content">${marked.parse(m.thinking)}</div>
                 </details>`;
