@@ -1,6 +1,18 @@
 // Nexon Chat Application
 const API_BASE = window.location.origin;
 
+// Greeting prompts
+const GREETINGS = [
+    "What's on your mind?",
+    "What are you curious about?",
+    "What would you like to explore?",
+    "What are you thinking about?"
+];
+
+function getRandomGreeting() {
+    return GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+}
+
 // State
 let messages = [];
 let isGenerating = false;
@@ -72,6 +84,11 @@ async function waitForModel() {
             clearInterval(textInterval);
             loadingState.classList.add('hidden');
             emptyState.classList.remove('hidden');
+
+            // Set random greeting
+            const greetingEl = document.querySelector('.greeting-text');
+            if (greetingEl) greetingEl.textContent = getRandomGreeting();
+
             inputEmpty.focus();
 
             // Display model name
@@ -228,7 +245,6 @@ async function streamResponse(assistantIndex) {
             content: m.content
         })),
         stream: true,
-        max_completion_tokens: 2048,
         temperature: 0.7
     };
 
@@ -278,13 +294,13 @@ async function streamResponse(assistantIndex) {
                     // Stream thinking tokens
                     if (thinking) {
                         messages[assistantIndex].thinking += thinking;
-                        renderMessages();
+                        updateStreamingMessage(assistantIndex);
                     }
 
                     // Thinking done - just update state
                     if (thinkingDone) {
                         messages[assistantIndex].isThinking = false;
-                        renderMessages();
+                        updateStreamingMessage(assistantIndex);
                     }
 
                     if (content) {
@@ -295,7 +311,7 @@ async function streamResponse(assistantIndex) {
 
                         messages[assistantIndex].content += content;
                         tokenCount++;
-                        renderMessages();
+                        updateStreamingMessage(assistantIndex);
                     }
 
                     if (data.choices?.[0]?.finish_reason) {
@@ -333,6 +349,10 @@ function resetChat() {
 
     chatState.classList.add('hidden');
     emptyState.classList.remove('hidden');
+
+    // Set new random greeting
+    const greetingEl = document.querySelector('.greeting-text');
+    if (greetingEl) greetingEl.textContent = getRandomGreeting();
 
     inputEmpty.value = '';
     inputChat.value = '';
@@ -451,8 +471,97 @@ function setGenerating(generating) {
     });
 }
 
+// Update only the streaming message content (optimized for smooth animations)
+function updateStreamingMessage(index) {
+    const messageEl = messagesEl.children[index];
+    if (!messageEl) {
+        renderMessages();
+        return;
+    }
+
+    const m = messages[index];
+
+    // Update thinking content if present
+    const thinkingSection = messageEl.querySelector('.thinking-section');
+    const thinkingContent = messageEl.querySelector('.thinking-content');
+
+    // If we need a thinking section but don't have one, do full render
+    if ((m.thinking || m.isThinking) && !thinkingSection) {
+        renderMessages();
+        return;
+    }
+
+    if (thinkingContent && m.thinking) {
+        thinkingContent.innerHTML = marked.parse(m.thinking);
+    }
+
+    // Update thinking section class (active/inactive)
+    if (thinkingSection) {
+        if (m.isThinking) {
+            thinkingSection.classList.add('active');
+            const label = thinkingSection.querySelector('summary > span');
+            if (label) label.textContent = 'Thinking...';
+        } else {
+            thinkingSection.classList.remove('active');
+            const label = thinkingSection.querySelector('summary > span');
+            if (label) label.textContent = 'Thought';
+        }
+    }
+
+    // Update main content
+    const contentEl = messageEl.querySelector('.content');
+    if (contentEl) {
+        const typingIndicator = contentEl.querySelector('.typing-indicator');
+
+        if (m.content) {
+            contentEl.innerHTML = marked.parse(m.content);
+            // Add copy buttons to new code blocks
+            contentEl.querySelectorAll('pre').forEach(pre => {
+                if (pre.querySelector('.code-copy-btn')) return;
+                const btn = document.createElement('button');
+                btn.className = 'code-copy-btn';
+                btn.title = 'Copy code';
+                btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>`;
+                btn.onclick = async () => {
+                    const code = pre.querySelector('code')?.textContent || pre.textContent;
+                    try {
+                        await navigator.clipboard.writeText(code);
+                        btn.classList.add('copied');
+                        setTimeout(() => btn.classList.remove('copied'), 1500);
+                    } catch (err) {
+                        console.error('Copy failed:', err);
+                    }
+                };
+                pre.appendChild(btn);
+            });
+        } else if (m.isStreaming && !typingIndicator) {
+            // Show typing indicator if no content yet
+            contentEl.innerHTML = `
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>`;
+        }
+    }
+
+    // Auto-scroll
+    requestAnimationFrame(() => {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    });
+}
+
 // Render messages
 function renderMessages() {
+    // Preserve open state of thinking sections
+    const openThinking = new Set();
+    messagesEl.querySelectorAll('.thinking-section').forEach((el, i) => {
+        if (el.open) openThinking.add(i);
+    });
+
     messagesEl.innerHTML = messages.map((m, i) => {
         const content = m.role === 'assistant'
             ? marked.parse(m.content || '')
@@ -461,16 +570,18 @@ function renderMessages() {
         let html = `<div class="message ${m.role}${m.isError ? ' error' : ''}">`;
 
         // Add thinking indicator (collapsed, click to expand)
-        if (m.role === 'assistant' && m.thinking && m.showThinking !== false) {
+        if (m.role === 'assistant' && (m.thinking || m.isThinking) && m.showThinking !== false) {
+            const thinkingClass = m.isThinking ? 'thinking-section active' : 'thinking-section';
+            const thinkingLabel = m.isThinking ? 'Thinking...' : 'Thought';
             html += `
-                <details class="thinking-section">
+                <details class="${thinkingClass}">
                     <summary>
                         <svg class="thinking-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
                             <path d="M12 16v-4"></path>
                             <path d="M12 8h.01"></path>
                         </svg>
-                        <span>Thinking</span>
+                        <span>${thinkingLabel}</span>
                     </summary>
                     <div class="thinking-content">${marked.parse(m.thinking)}</div>
                 </details>`;
@@ -505,6 +616,11 @@ function renderMessages() {
         html += `</div>`;
         return html;
     }).join('');
+
+    // Restore open state of thinking sections
+    messagesEl.querySelectorAll('.thinking-section').forEach((el, i) => {
+        if (openThinking.has(i)) el.open = true;
+    });
 
     // Add copy buttons to code blocks
     messagesEl.querySelectorAll('pre').forEach(pre => {

@@ -134,7 +134,7 @@ start() {
     fi
 
     # Start web server (with proxy for token filtering)
-    python3 "$SCRIPT_DIR/nexon-server.py" --mlx-port $MLX_PORT --web-port $WEB_PORT >> "$LOG_FILE" 2>&1 &
+    python3 "$SCRIPT_DIR/nexon-server.py" --mlx-port $MLX_PORT --web-port $WEB_PORT --model "$MODEL" >> "$LOG_FILE" 2>&1 &
     WEB_PID=$!
 
     # Save PIDs

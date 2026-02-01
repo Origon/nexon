@@ -13,6 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     mlx_port = 8080
+    model_name = None
 
     def __init__(self, *args, web_dir=None, **kwargs):
         self.web_dir = web_dir
@@ -32,14 +33,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 method="GET"
             )
             with urllib.request.urlopen(req, timeout=2) as resp:
-                data = json.loads(resp.read().decode())
-                model_id = data.get("data", [{}])[0].get("id", "unknown")
+                resp.read()  # Consume response to confirm server is ready
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "ready": True,
-                    "model": model_id
+                    "model": self.model_name or "unknown"
                 }).encode())
         except Exception:
             self.send_response(200)
@@ -62,6 +62,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
             data = json.loads(body)
             data["stream"] = True
+            # Ensure high token limit for reasoning models (they need tokens for thinking + response)
+            if "max_tokens" not in data:
+                data["max_tokens"] = 32768
 
             # Add system prompt for ChatGPT-like formatting
             system_prompt = {
@@ -99,6 +102,8 @@ Style:
                 self.end_headers()
 
                 thinking_done = False
+                has_explicit_reasoning = False
+                content_received = False
                 parser = HarmonyParser()
 
                 for line in resp:
@@ -128,39 +133,62 @@ Style:
 
                         # Handle explicit reasoning field (some models use this)
                         if reasoning:
+                            has_explicit_reasoning = True
                             self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(reasoning)}}}}}]}}\n\n'.encode())
                             self.wfile.flush()
 
-                        # Parse content for inline reasoning (Harmony, <think> tags, etc.)
+                        # Handle content
                         if content:
-                            parsed = parser.parse(content)
+                            content_received = True
+                            # For models using explicit reasoning field, pass content directly
+                            if has_explicit_reasoning:
+                                if not thinking_done:
+                                    self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
+                                    self.wfile.flush()
+                                    thinking_done = True
+                                clean = self._clean_special_tokens(content)
+                                if clean:
+                                    self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
+                                    self.wfile.flush()
+                            else:
+                                # Parse content for inline reasoning (Harmony, <think> tags, etc.)
+                                parsed = parser.parse(content)
 
-                            # Stream thinking tokens
-                            if parsed["thinking"]:
-                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(parsed["thinking"])}}}}}]}}\n\n'.encode())
-                                self.wfile.flush()
+                                # Stream thinking tokens
+                                if parsed["thinking"]:
+                                    self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(parsed["thinking"])}}}}}]}}\n\n'.encode())
+                                    self.wfile.flush()
 
-                            # Signal thinking is done
-                            if parsed["thinking_done"] and not thinking_done:
-                                self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
-                                self.wfile.flush()
-                                thinking_done = True
-
-                            # Stream content
-                            if parsed["content"]:
-                                # Signal thinking done for plain format (no explicit marker)
-                                if not thinking_done and parser.format == "plain":
+                                # Signal thinking is done
+                                if parsed["thinking_done"] and not thinking_done:
                                     self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
                                     self.wfile.flush()
                                     thinking_done = True
 
-                                clean = self._clean_special_tokens(parsed["content"])
-                                if clean:
-                                    self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
-                                    self.wfile.flush()
+                                # Stream content
+                                if parsed["content"]:
+                                    # Signal thinking done for plain format (no explicit marker)
+                                    if not thinking_done and parser.format == "plain":
+                                        self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
+                                        self.wfile.flush()
+                                        thinking_done = True
+
+                                    clean = self._clean_special_tokens(parsed["content"])
+                                    if clean:
+                                        self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
+                                        self.wfile.flush()
 
                         # Handle finish
                         if chunk.get("choices", [{}])[0].get("finish_reason"):
+                            # If model only output reasoning but no content, show a fallback message
+                            if has_explicit_reasoning and not content_received:
+                                if not thinking_done:
+                                    self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
+                                    self.wfile.flush()
+                                # Model finished without producing content - output a fallback
+                                fallback = "*The model finished thinking but did not produce a response. Try rephrasing your question or using a different model.*"
+                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(fallback)}}}}}]}}\n\n'.encode())
+                                self.wfile.flush()
                             self.wfile.write(b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n')
                             self.wfile.write(b'data: [DONE]\n\n')
                             self.wfile.flush()
@@ -303,6 +331,10 @@ class HarmonyParser:
             self.buffer = ""
         return result
 
+
+class NexonHandler(Handler):
+    """Handler with CORS support"""
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -318,11 +350,12 @@ class HarmonyParser:
         pass  # Quiet
 
 
-def run_server(mlx_port: int, web_port: int, web_dir: str):
+def run_server(mlx_port: int, web_port: int, web_dir: str, model: str = None):
     """Run the web server with proxy"""
-    Handler.mlx_port = mlx_port
+    NexonHandler.mlx_port = mlx_port
+    NexonHandler.model_name = model
 
-    handler = lambda *a, **k: Handler(*a, web_dir=web_dir, **k)
+    handler = lambda *a, **k: NexonHandler(*a, web_dir=web_dir, **k)
 
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", web_port), handler) as srv:
@@ -336,6 +369,7 @@ if __name__ == "__main__":
     p.add_argument("--mlx-port", type=int, default=8080)
     p.add_argument("--web-port", type=int, default=3000)
     p.add_argument("--web-dir", type=str, default=str(SCRIPT_DIR / "web"))
+    p.add_argument("--model", type=str, default=None, help="Model name to display")
     args = p.parse_args()
 
-    run_server(args.mlx_port, args.web_port, args.web_dir)
+    run_server(args.mlx_port, args.web_port, args.web_dir, args.model)
