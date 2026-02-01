@@ -3,6 +3,7 @@
 
 import http.server
 import json
+import re
 import socketserver
 import urllib.request
 from pathlib import Path
@@ -16,6 +17,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, web_dir=None, **kwargs):
         self.web_dir = web_dir
         super().__init__(*args, directory=web_dir, **kwargs)
+
+    def do_GET(self):
+        if self.path == "/api/health":
+            self.health_check()
+        else:
+            super().do_GET()
+
+    def health_check(self):
+        """Check if MLX server is ready"""
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{self.mlx_port}/v1/models",
+                method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode())
+                model_id = data.get("data", [{}])[0].get("id", "unknown")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "ready": True,
+                    "model": model_id
+                }).encode())
+        except Exception:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "ready": False,
+                "message": "Model is loading..."
+            }).encode())
 
     def do_POST(self):
         if self.path == "/api/v1/chat/completions/stream":
@@ -65,8 +98,7 @@ Style:
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
 
-                buf = ""
-                in_final = False
+                thinking_done = False
 
                 for line in resp:
                     line = line.decode()
@@ -75,45 +107,41 @@ Style:
 
                     payload = line[6:].strip()
                     if payload == "[DONE]":
-                        if buf:
-                            clean = buf.split("<|")[0]
-                            if clean:
-                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
-                                self.wfile.flush()
                         self.wfile.write(b"data: [DONE]\n\n")
                         self.wfile.flush()
                         break
 
                     try:
                         chunk = json.loads(payload)
-                        content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        reasoning = delta.get("reasoning", "")
 
+                        # Stream reasoning (thinking) in real-time
+                        if reasoning:
+                            self.wfile.write(f'data: {{"choices":[{{"delta":{{"thinking":{json.dumps(reasoning)}}}}}]}}\n\n'.encode())
+                            self.wfile.flush()
+
+                        # Stream content
                         if content:
-                            buf += content
-
-                            # Wait for final channel marker
-                            if "<|channel|>final<|message|>" in buf:
-                                in_final = True
-                                buf = buf.split("<|channel|>final<|message|>")[-1]
-
-                            # Stream content once in final channel (no pending special tokens)
-                            if in_final and buf and "<|" not in buf:
-                                chunk["choices"][0]["delta"]["content"] = buf
-                                self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+                            # Signal that thinking is done (first content token)
+                            if not thinking_done:
+                                self.wfile.write(b'data: {"choices":[{"delta":{"thinking_done":true}}]}\n\n')
                                 self.wfile.flush()
-                                buf = ""
+                                thinking_done = True
+
+                            # Clean and stream content
+                            clean = re.sub(r'<\|[^|]*\|>', '', content)
+                            if clean:
+                                self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
+                                self.wfile.flush()
 
                         # Handle finish
                         if chunk.get("choices", [{}])[0].get("finish_reason"):
-                            if buf:
-                                clean = buf.split("<|")[0]
-                                if clean:
-                                    self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(clean)}}}}}]}}\n\n'.encode())
-                                    self.wfile.flush()
                             self.wfile.write(b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n')
                             self.wfile.write(b'data: [DONE]\n\n')
                             self.wfile.flush()
-                            return  # Exit after finish
+                            return
 
                     except json.JSONDecodeError:
                         pass
@@ -123,6 +151,19 @@ Style:
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def _clean_special_tokens(self, text):
+        """Remove special tokens from text"""
+        # Remove any <|...|> style tokens
+        text = re.sub(r'<\|[^|]*\|>', '', text)
+        # Remove incomplete tags at the end
+        if '<|' in text:
+            text = text.split('<|')[0]
+        if '<think>' in text:
+            text = text.replace('<think>', '')
+        if '</think>' in text:
+            text = text.replace('</think>', '')
+        return text
 
     def do_OPTIONS(self):
         self.send_response(200)

@@ -35,6 +35,68 @@ body {
     display: none !important;
 }
 
+/* Loading state */
+#loading-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+}
+
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    max-width: 300px;
+}
+
+.loading-icon {
+    font-size: 2.5rem;
+    color: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
+}
+
+.loading-text {
+    font-size: 1.125rem;
+    color: var(--text-secondary);
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+.loading-bar {
+    width: 200px;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.loading-bar-fill {
+    width: 30%;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: loading 1.5s ease-in-out infinite;
+}
+
+@keyframes loading {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(200%); }
+    100% { transform: translateX(-100%); }
+}
+
+.loading-hint {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
 /* Empty state - centered */
 #empty-state {
     display: flex;
@@ -449,6 +511,73 @@ footer .input-box {
     color: var(--text-muted);
     text-align: center;
     font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* Thinking section */
+.thinking-section {
+    margin-bottom: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.thinking-section summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    cursor: pointer;
+    color: var(--text-secondary);
+    list-style: none;
+    user-select: none;
+    font-size: 0.875rem;
+}
+
+.thinking-section summary::-webkit-details-marker {
+    display: none;
+}
+
+.thinking-section summary::before {
+    content: '›';
+    font-size: 1rem;
+    font-weight: 600;
+    transition: transform 0.2s ease;
+    color: var(--text-muted);
+}
+
+.thinking-section[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.thinking-section summary:hover {
+    color: var(--text-primary);
+}
+
+.thinking-section summary:hover::before {
+    color: var(--text-secondary);
+}
+
+.thinking-icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.thinking-content {
+    padding: 0.75rem 1rem;
+    margin-top: 0.25rem;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 0.5rem;
+    border-left: 2px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+.thinking-content p {
+    margin: 0 0 0.5rem 0;
+}
+
+.thinking-content p:last-child {
+    margin-bottom: 0;
 }
 
 /* Error state */

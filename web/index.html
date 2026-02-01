@@ -9,8 +9,20 @@
   </head>
   <body>
     <div id="app">
+      <!-- Loading state -->
+      <div id="loading-state">
+        <div class="loading-container">
+          <div class="loading-icon">✺</div>
+          <div class="loading-text">Loading model...</div>
+          <div class="loading-bar">
+            <div class="loading-bar-fill"></div>
+          </div>
+          <div class="loading-hint">This may take a few minutes on first run</div>
+        </div>
+      </div>
+
       <!-- Empty state (centered) -->
-      <div id="empty-state">
+      <div id="empty-state" class="hidden">
         <div class="greeting">
           <span class="greeting-text">How can I help you?</span>
         </div>
