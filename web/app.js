@@ -4,6 +4,8 @@ const API_BASE = window.location.origin;
 // State
 let messages = [];
 let isGenerating = false;
+let currentAbortController = null;
+let currentModel = '';
 
 // DOM Elements
 const loadingState = document.getElementById('loading-state');
@@ -16,15 +18,36 @@ const formChat = document.getElementById('chat-form');
 const inputEmpty = document.getElementById('input-empty');
 const inputChat = document.getElementById('input');
 const statsEl = document.getElementById('stats');
+const modelNameEl = document.getElementById('model-name');
 
-// Configure marked
-marked.setOptions({ breaks: true, gfm: true });
+// Configure marked with syntax highlighting
+marked.use({
+    breaks: true,
+    gfm: true,
+    renderer: {
+        code(code, lang) {
+            const text = typeof code === 'object' ? code.text : code;
+            const language = typeof code === 'object' ? code.lang : lang;
+
+            let highlighted;
+            if (language && hljs.getLanguage(language)) {
+                highlighted = hljs.highlight(text, { language }).value;
+            } else {
+                highlighted = hljs.highlightAuto(text).value;
+            }
+            return `<pre><code class="hljs language-${language || ''}">${highlighted}</code></pre>`;
+        }
+    }
+});
 
 // Check if model is ready
 async function checkHealth() {
     try {
         const response = await fetch(`${API_BASE}/api/health`);
         const data = await response.json();
+        if (data.model) {
+            currentModel = data.model;
+        }
         return data.ready;
     } catch {
         return false;
@@ -50,28 +73,88 @@ async function waitForModel() {
             loadingState.classList.add('hidden');
             emptyState.classList.remove('hidden');
             inputEmpty.focus();
+
+            // Display model name
+            if (modelNameEl && currentModel) {
+                const shortName = currentModel.split('/').pop();
+                modelNameEl.textContent = shortName;
+                modelNameEl.title = currentModel;
+            }
             return;
         }
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
 }
 
+// Initialize theme
+function initTheme() {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        updateThemeIcon(true);
+    }
+}
+
+// Toggle theme
+function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('theme', 'light');
+    } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+    }
+    updateThemeIcon(!isDark);
+}
+
+// Update theme icon
+function updateThemeIcon(isDark) {
+    document.querySelectorAll('.sun-icon').forEach(el => el.classList.toggle('hidden', isDark));
+    document.querySelectorAll('.moon-icon').forEach(el => el.classList.toggle('hidden', !isDark));
+}
+
 // Initialize
 async function init() {
-    // Wait for model to be ready first
+    // Init theme first (before waiting for model)
+    initTheme();
+
+    // Wait for model to be ready
     await waitForModel();
 
+    // Form submissions
     formEmpty.addEventListener('submit', handleSubmit);
     formChat.addEventListener('submit', handleSubmit);
+
+    // Input events
     inputEmpty.addEventListener('keydown', handleKeydown);
     inputChat.addEventListener('keydown', handleKeydown);
     inputEmpty.addEventListener('input', handleInput);
     inputChat.addEventListener('input', handleInput);
-    messagesEl.addEventListener('click', handleCopy);
+
+    // Message actions
+    messagesEl.addEventListener('click', handleMessageClick);
+
+    // Header buttons
+    document.getElementById('new-chat-btn')?.addEventListener('click', resetChat);
+    document.getElementById('theme-btn')?.addEventListener('click', toggleTheme);
+    document.getElementById('export-btn')?.addEventListener('click', exportChat);
+
+    // Stop buttons
+    document.querySelectorAll('.stop-btn').forEach(btn => {
+        btn.addEventListener('click', handleStop);
+    });
+
+    // Global keyboard shortcuts
+    document.addEventListener('keydown', handleGlobalKeydown);
 
     // Initialize textarea heights
     autoResizeTextarea(inputEmpty);
     autoResizeTextarea(inputChat);
+
+    // Initialize char counts
+    updateCharCount(inputEmpty);
+    updateCharCount(inputChat);
 }
 
 // Get active input
@@ -91,6 +174,7 @@ async function handleSubmit(e) {
     messages.push({ role: 'user', content });
     input.value = '';
     autoResizeTextarea(input);
+    updateCharCount(input);
 
     // Switch to chat state
     if (messages.length === 1) {
@@ -99,6 +183,11 @@ async function handleSubmit(e) {
         inputChat.focus();
     }
 
+    await generateResponse();
+}
+
+// Generate response
+async function generateResponse() {
     renderMessages();
 
     // Add placeholder for assistant response
@@ -112,9 +201,13 @@ async function handleSubmit(e) {
     try {
         await streamResponse(assistantIndex);
     } catch (error) {
-        console.error('Generation error:', error);
-        messages[assistantIndex].content = `Error: ${error.message}`;
-        messages[assistantIndex].isError = true;
+        if (error.name === 'AbortError') {
+            messages[assistantIndex].content += '\n\n*[Generation stopped]*';
+        } else {
+            console.error('Generation error:', error);
+            messages[assistantIndex].content = `Error: ${error.message}`;
+            messages[assistantIndex].isError = true;
+        }
     } finally {
         messages[assistantIndex].isStreaming = false;
         setGenerating(false);
@@ -125,6 +218,9 @@ async function handleSubmit(e) {
 // Stream response from server
 async function streamResponse(assistantIndex) {
     const startTime = performance.now();
+
+    // Create abort controller
+    currentAbortController = new AbortController();
 
     const requestBody = {
         messages: messages.slice(0, -1).map(m => ({
@@ -139,7 +235,8 @@ async function streamResponse(assistantIndex) {
     const response = await fetch(`${API_BASE}/api/v1/chat/completions/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: currentAbortController.signal
     });
 
     if (!response.ok) {
@@ -154,60 +251,64 @@ async function streamResponse(assistantIndex) {
     let firstToken = true;
     let ttft = 0;
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+            buffer += decoder.decode(value, { stream: true });
 
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-        for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
 
-            const jsonStr = line.slice(6);
-            if (jsonStr === '[DONE]') {
-                reader.cancel();
-                return;
-            }
-
-            try {
-                const data = JSON.parse(jsonStr);
-                const content = data.choices?.[0]?.delta?.content;
-                const thinking = data.choices?.[0]?.delta?.thinking;
-                const thinkingDone = data.choices?.[0]?.delta?.thinking_done;
-
-                // Stream thinking tokens
-                if (thinking) {
-                    messages[assistantIndex].thinking += thinking;
-                    renderMessages();
+                const jsonStr = line.slice(6);
+                if (jsonStr === '[DONE]') {
+                    return;
                 }
 
-                // Thinking done - just update state
-                if (thinkingDone) {
-                    messages[assistantIndex].isThinking = false;
-                    renderMessages();
-                }
+                try {
+                    const data = JSON.parse(jsonStr);
+                    const content = data.choices?.[0]?.delta?.content;
+                    const thinking = data.choices?.[0]?.delta?.thinking;
+                    const thinkingDone = data.choices?.[0]?.delta?.thinking_done;
 
-                if (content) {
-                    if (firstToken) {
-                        ttft = performance.now() - startTime;
-                        firstToken = false;
+                    // Stream thinking tokens
+                    if (thinking) {
+                        messages[assistantIndex].thinking += thinking;
+                        renderMessages();
                     }
 
-                    messages[assistantIndex].content += content;
-                    tokenCount++;
-                    renderMessages();
-                }
+                    // Thinking done - just update state
+                    if (thinkingDone) {
+                        messages[assistantIndex].isThinking = false;
+                        renderMessages();
+                    }
 
-                if (data.choices?.[0]?.finish_reason) {
-                    break;
+                    if (content) {
+                        if (firstToken) {
+                            ttft = performance.now() - startTime;
+                            firstToken = false;
+                        }
+
+                        messages[assistantIndex].content += content;
+                        tokenCount++;
+                        renderMessages();
+                    }
+
+                    if (data.choices?.[0]?.finish_reason) {
+                        break;
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse SSE data:', e);
                 }
-            } catch (e) {
-                console.warn('Failed to parse SSE data:', e);
             }
         }
+    } finally {
+        reader.releaseLock();
+        currentAbortController = null;
     }
 
     const totalTime = performance.now() - startTime;
@@ -215,26 +316,84 @@ async function streamResponse(assistantIndex) {
     statsEl.textContent = `${tokenCount} tokens | ${tokensPerSecond.toFixed(1)} tok/s | TTFT: ${ttft.toFixed(0)}ms`;
 }
 
+// Handle stop button
+function handleStop() {
+    if (currentAbortController) {
+        currentAbortController.abort();
+    }
+}
+
+// Reset chat (new chat)
+function resetChat() {
+    // Stop any ongoing generation
+    handleStop();
+
+    messages = [];
+    statsEl.textContent = '';
+
+    chatState.classList.add('hidden');
+    emptyState.classList.remove('hidden');
+
+    inputEmpty.value = '';
+    inputChat.value = '';
+    autoResizeTextarea(inputEmpty);
+    autoResizeTextarea(inputChat);
+    updateCharCount(inputEmpty);
+    updateCharCount(inputChat);
+
+    inputEmpty.focus();
+}
+
+// Export chat as markdown
+function exportChat() {
+    if (messages.length === 0) return;
+
+    let markdown = '# Chat Export\n\n';
+    markdown += `*Exported from Nexon on ${new Date().toLocaleString()}*\n\n---\n\n`;
+
+    for (const msg of messages) {
+        if (msg.role === 'user') {
+            markdown += `**User:**\n${msg.content}\n\n`;
+        } else {
+            markdown += `**Assistant:**\n${msg.content}\n\n`;
+        }
+    }
+
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-export-${Date.now()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 // Handle input changes
 function handleInput(e) {
     autoResizeTextarea(e.target);
+    updateCharCount(e.target);
+}
+
+// Update character count
+function updateCharCount(textarea) {
+    const form = textarea.closest('form');
+    const countEl = form?.querySelector('.char-count');
+    if (countEl) {
+        const len = textarea.value.length;
+        countEl.textContent = len > 0 ? `${len}` : '';
+    }
 }
 
 // Auto-resize textarea
 function autoResizeTextarea(textarea) {
-    // Reset height to get the correct scrollHeight
     textarea.style.height = 'auto';
-
-    // Set the height to match content, with a minimum of 24px (1 line)
-    // and maximum of 160px (then scroll kicks in)
     const minHeight = 24;
     const maxHeight = 160;
     const scrollHeight = textarea.scrollHeight;
-
     textarea.style.height = Math.max(minHeight, Math.min(scrollHeight, maxHeight)) + 'px';
 }
 
-// Handle keyboard shortcuts
+// Handle keyboard shortcuts in textarea
 function handleKeydown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -243,31 +402,53 @@ function handleKeydown(e) {
     }
 }
 
-// Handle copy button clicks
-async function handleCopy(e) {
-    const btn = e.target.closest('.copy-btn');
-    if (!btn) return;
+// Handle global keyboard shortcuts
+function handleGlobalKeydown(e) {
+    // Escape - stop generation
+    if (e.key === 'Escape' && isGenerating) {
+        handleStop();
+    }
 
-    const index = parseInt(btn.dataset.index);
-    const content = messages[index]?.content;
-    if (!content) return;
+    // Cmd/Ctrl + Shift + O - new chat
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'o') {
+        e.preventDefault();
+        resetChat();
+    }
+}
 
-    try {
-        await navigator.clipboard.writeText(content);
-        btn.classList.add('copied');
-        setTimeout(() => btn.classList.remove('copied'), 1500);
-    } catch (err) {
-        console.error('Copy failed:', err);
+// Handle message click events (copy)
+function handleMessageClick(e) {
+    // Copy button
+    const copyBtn = e.target.closest('.copy-btn');
+    if (copyBtn) {
+        const index = parseInt(copyBtn.dataset.index);
+        const content = messages[index]?.content;
+        if (content) {
+            navigator.clipboard.writeText(content).then(() => {
+                copyBtn.classList.add('copied');
+                setTimeout(() => copyBtn.classList.remove('copied'), 1500);
+            });
+        }
+        return;
     }
 }
 
 // Set generating state
 function setGenerating(generating) {
     isGenerating = generating;
-    const btns = document.querySelectorAll('.send-btn');
-    const inputs = document.querySelectorAll('textarea');
-    btns.forEach(btn => btn.disabled = generating);
-    inputs.forEach(input => input.disabled = generating);
+
+    // Toggle send/stop buttons
+    document.querySelectorAll('.send-btn').forEach(btn => {
+        btn.classList.toggle('hidden', generating);
+    });
+    document.querySelectorAll('.stop-btn').forEach(btn => {
+        btn.classList.toggle('hidden', !generating);
+    });
+
+    // Disable/enable inputs
+    document.querySelectorAll('textarea').forEach(input => {
+        input.disabled = generating;
+    });
 }
 
 // Render messages
@@ -277,8 +458,7 @@ function renderMessages() {
             ? marked.parse(m.content || '')
             : escapeHtml(m.content);
 
-        let html = `
-            <div class="message ${m.role}${m.isError ? ' error' : ''}">`;
+        let html = `<div class="message ${m.role}${m.isError ? ' error' : ''}">`;
 
         // Add thinking indicator (collapsed, click to expand)
         if (m.role === 'assistant' && m.thinking && m.showThinking !== false) {
@@ -309,7 +489,8 @@ function renderMessages() {
 
         html += `</div>`;
 
-        if (m.role === 'assistant' && m.content && !m.isStreaming) {
+        // Assistant message actions (copy, retry)
+        if (m.role === 'assistant' && !m.isStreaming && m.content) {
             html += `
                 <div class="message-actions">
                     <button class="copy-btn" data-index="${i}" title="Copy">
