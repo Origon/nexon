@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexon</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Empty state (centered) -->
+        <div id="empty-state">
+            <div class="greeting">
+                <span class="greeting-icon">✺</span>
+                <span class="greeting-text">How can I help you?</span>
+            </div>
+            <form id="chat-form-empty">
+                <div class="input-box">
+                    <textarea id="input-empty" placeholder="Ask anything..." rows="1" autofocus></textarea>
+                    <div class="input-actions">
+                        <button type="submit" class="send-btn" aria-label="Send"></button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Chat state -->
+        <div id="chat-state" class="hidden">
+            <main id="chat-container">
+                <div id="messages"></div>
+            </main>
+            <footer>
+                <form id="chat-form">
+                    <div class="input-box">
+                        <textarea id="input" placeholder="Reply to Nexon..." rows="1"></textarea>
+                        <div class="input-actions">
+                            <button type="submit" class="send-btn" aria-label="Send"></button>
+                        </div>
+                    </div>
+                </form>
+                <div class="footer-info">
+                    <span id="stats"></span>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

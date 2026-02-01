@@ -1,0 +1,40 @@
+# Nexon runtime
+.nexon.pid
+.nexon.log
+
+# Models & adapters (large files)
+models/
+adapters/
+
+# Training data (project-specific)
+data/
+
+# Claude Code
+.claude/
+
+# macOS
+.DS_Store
+._*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Secrets
+.env
+*.pem
+*.key
+
+# Build artifacts
+.build/
+build/
+*.xcodeproj/xcuserdata/
