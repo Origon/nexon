@@ -1,6 +1,5 @@
 # Nexon runtime
 .nexon.pid
-.nexon.log
 
 # Models & adapters (large files)
 models/
