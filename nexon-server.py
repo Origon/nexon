@@ -110,7 +110,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 headers={"Content-Type": "application/json"},
             )
 
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=300) as resp:
                 if is_streaming:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
@@ -173,7 +173,7 @@ Style:
                 headers={"Content-Type": "application/json"},
             )
 
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=300) as resp:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
