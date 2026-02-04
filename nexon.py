@@ -367,10 +367,12 @@ When you need to perform an action, USE THE TOOLS."""
 
 
 def clean_special_tokens(text: str) -> str:
-    """Remove special tokens like <|...|>"""
+    """Remove special tokens like <|...|> and Harmony format markers"""
     text = re.sub(r'<\|[^|]*\|>', '', text)
     if '<|' in text:
         text = text.split('<|')[0]
+    # Strip Harmony format markers (for /v1/chat/completions endpoint)
+    text = re.sub(r'^assistantfinal\s*', '', text, flags=re.IGNORECASE)
     return text
 
 
