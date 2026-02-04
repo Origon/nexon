@@ -371,8 +371,9 @@ def clean_special_tokens(text: str) -> str:
     text = re.sub(r'<\|[^|]*\|>', '', text)
     if '<|' in text:
         text = text.split('<|')[0]
-    # Strip Harmony format markers (for /v1/chat/completions endpoint)
-    text = re.sub(r'^assistantfinal\s*', '', text, flags=re.IGNORECASE)
+    # Strip Harmony format: "analysis...assistantfinal..." → extract content after assistantfinal
+    if 'assistantfinal' in text.lower():
+        text = re.split(r'assistantfinal', text, flags=re.IGNORECASE)[-1].lstrip()
     return text
 
 
@@ -503,29 +504,42 @@ async def chat_completions(request: Request):
         async def generate():
             message_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
             accumulated = ""
-            prefix_checked = False
+            harmony_found = False
 
             for token in model_manager.generate_stream(messages, max_tokens):
                 accumulated += token
 
                 if not tools:
-                    # Buffer until we can check for Harmony prefix
-                    if not prefix_checked:
-                        if len(accumulated) >= 14:  # len("assistantfinal")
-                            prefix_checked = True
-                            # Strip Harmony prefix if present
-                            cleaned = re.sub(r'^assistantfinal\s*', '', accumulated, flags=re.IGNORECASE)
-                            cleaned = clean_special_tokens(cleaned)
-                            if cleaned:
+                    # Buffer until we find "assistantfinal" (Harmony format)
+                    if not harmony_found:
+                        if 'assistantfinal' in accumulated.lower():
+                            harmony_found = True
+                            # Extract content after assistantfinal
+                            content = re.split(r'assistantfinal', accumulated, flags=re.IGNORECASE)[-1].lstrip()
+                            content = clean_special_tokens(content)
+                            if content:
                                 chunk = {
                                     "id": message_id,
                                     "object": "chat.completion.chunk",
-                                    "choices": [{"index": 0, "delta": {"content": cleaned}, "finish_reason": None}]
+                                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}]
                                 }
                                 yield f"data: {json.dumps(chunk)}\n\n"
+                            accumulated = ""
+                        # If no Harmony after 200 chars, assume plain format
+                        elif len(accumulated) > 200:
+                            harmony_found = True  # Stop looking
+                            content = clean_special_tokens(accumulated)
+                            if content:
+                                chunk = {
+                                    "id": message_id,
+                                    "object": "chat.completion.chunk",
+                                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}]
+                                }
+                                yield f"data: {json.dumps(chunk)}\n\n"
+                            accumulated = ""
                         continue
 
-                    # After prefix check, stream directly
+                    # After Harmony check, stream directly
                     clean = clean_special_tokens(token)
                     if clean:
                         chunk = {
@@ -535,15 +549,14 @@ async def chat_completions(request: Request):
                         }
                         yield f"data: {json.dumps(chunk)}\n\n"
 
-            # Flush any remaining buffered content (for short responses < 14 chars)
-            if not tools and not prefix_checked and accumulated:
-                cleaned = re.sub(r'^assistantfinal\s*', '', accumulated, flags=re.IGNORECASE)
-                cleaned = clean_special_tokens(cleaned)
-                if cleaned:
+            # Flush remaining buffer
+            if not tools and accumulated:
+                content = clean_special_tokens(accumulated)
+                if content:
                     chunk = {
                         "id": message_id,
                         "object": "chat.completion.chunk",
-                        "choices": [{"index": 0, "delta": {"content": cleaned}, "finish_reason": None}]
+                        "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}]
                     }
                     yield f"data: {json.dumps(chunk)}\n\n"
 
