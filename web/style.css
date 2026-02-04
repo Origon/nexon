@@ -274,6 +274,47 @@ body {
     cursor: not-allowed;
 }
 
+/* Mic button */
+.mic-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mic-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.mic-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .mic-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.mic-btn.recording {
+    color: var(--error);
+    animation: mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
 /* Stop button */
 .stop-btn {
     width: 36px;

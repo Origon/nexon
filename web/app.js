@@ -658,5 +658,93 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Speech Recognition
+let recognition = null;
+let isRecording = false;
+
+function initSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        // Hide mic buttons if speech recognition not supported
+        document.querySelectorAll('.mic-btn').forEach(btn => btn.style.display = 'none');
+        return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+        }
+
+        // Get the active input field
+        const activeInput = document.activeElement.tagName === 'TEXTAREA'
+            ? document.activeElement
+            : (emptyState.classList.contains('hidden') ? inputChat : inputEmpty);
+
+        // Update with transcript
+        if (activeInput) {
+            activeInput.value = transcript;
+            activeInput.dispatchEvent(new Event('input'));
+        }
+    };
+
+    recognition.onend = () => {
+        if (isRecording) {
+            // Restart if still recording (browser may stop after silence)
+            recognition.start();
+        }
+    };
+
+    recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        stopRecording();
+    };
+}
+
+function startRecording(btn) {
+    if (!recognition) return;
+
+    isRecording = true;
+    btn.classList.add('recording');
+
+    try {
+        recognition.start();
+    } catch (e) {
+        // Already started
+    }
+}
+
+function stopRecording() {
+    if (!recognition) return;
+
+    isRecording = false;
+    document.querySelectorAll('.mic-btn').forEach(btn => btn.classList.remove('recording'));
+
+    try {
+        recognition.stop();
+    } catch (e) {
+        // Already stopped
+    }
+}
+
+// Set up mic button handlers
+document.querySelectorAll('.mic-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording(btn);
+        }
+    });
+});
+
+// Initialize speech recognition
+initSpeechRecognition();
+
 // Start
 init();
