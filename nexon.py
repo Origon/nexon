@@ -369,7 +369,7 @@ Available tools:
 When you need to perform an action, USE THE TOOLS."""
 
 
-def clean_special_tokens(text: str) -> str:
+def clean_special_tokens(text: str, strip: bool = True) -> str:
     """Remove special tokens like <|...|> and Harmony format markers"""
     # Remove channel tags like <|message|>, <|channel|>, etc.
     text = re.sub(r'<\|[^|]*\|>', '', text)
@@ -379,7 +379,7 @@ def clean_special_tokens(text: str) -> str:
     text = re.sub(r'^analysis\s*', '', text, flags=re.IGNORECASE)
     if 'assistantfinal' in text.lower():
         text = re.split(r'assistantfinal', text, flags=re.IGNORECASE)[-1]
-    return text.strip()
+    return text.strip() if strip else text
 
 
 # =============================================================================
@@ -481,8 +481,8 @@ Formatting: Use **bold** for key terms. Use ```language blocks for code. Use ## 
                         yield f"data: {json.dumps(chunk)}\n\n"
                     accumulated = ""
             else:
-                # Stream content directly
-                clean = clean_special_tokens(token)
+                # Stream content directly (don't strip to preserve spaces)
+                clean = clean_special_tokens(token, strip=False)
                 if clean:
                     chunk = {"choices": [{"delta": {"content": clean}}]}
                     yield f"data: {json.dumps(chunk)}\n\n"
@@ -562,8 +562,8 @@ async def chat_completions(request: Request):
                             accumulated = ""
                         continue
 
-                    # After Harmony check, stream directly
-                    clean = clean_special_tokens(token)
+                    # After Harmony check, stream directly (don't strip to preserve spaces)
+                    clean = clean_special_tokens(token, strip=False)
                     if clean:
                         chunk = {
                             "id": message_id,
