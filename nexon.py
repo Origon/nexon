@@ -172,11 +172,11 @@ class ReasoningParser:
                     self.buffer = ""
                 return result
 
-            # Harmony format
-            if self.buffer.lower().startswith("analysis"):
+            # Harmony format (require delimiter to avoid false positives on "Analysis of...")
+            if re.match(r'^analysis\s*[\n:]', self.buffer, re.IGNORECASE):
                 self.format = "harmony"
                 self.mode = "thinking"
-                thinking = re.sub(r'^analysis\s*', '', self.buffer, flags=re.IGNORECASE)
+                thinking = re.sub(r'^analysis\s*[\n:]?\s*', '', self.buffer, flags=re.IGNORECASE)
                 result["thinking"] = thinking
                 self.buffer = ""
                 return result
