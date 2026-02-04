@@ -17,15 +17,13 @@ Run your own AI on Apple Silicon. A minimal toolkit for local LLMs with a clean 
 
 ## Getting Started
 
-### 1. Install
+### 1. Install Dependencies
 
 ```bash
 git clone https://github.com/Origon/nexon.git
 cd nexon
-./install.sh
+pip3 install mlx-lm fastapi uvicorn
 ```
-
-This installs the `mlx-lm` Python package and adds the `nexon` command to your PATH.
 
 **Requirements:**
 - macOS with Apple Silicon (M1/M2/M3/M4)
@@ -34,7 +32,7 @@ This installs the `mlx-lm` Python package and adds the `nexon` command to your P
 
 ### 2. Choose a Model
 
-Pick a model based on your Mac's memory. Models download automatically from HuggingFace on first run (this can take a few minutes for larger models).
+Pick a model based on your Mac's memory. Models download automatically from HuggingFace on first run.
 
 | Model | Size | Best For |
 |-------|------|----------|
@@ -52,17 +50,16 @@ Browse all models: [mlx-community on HuggingFace](https://huggingface.co/mlx-com
 ### 3. Start Chatting
 
 ```bash
-nexon -m mlx-community/Qwen3-8B-4bit start
+./nexon.py start -m mlx-community/Qwen3-8B-4bit
 ```
 
-Your browser opens automatically to `http://localhost:3000`. That's it — you're running a local LLM!
+Open `http://localhost:3000` in your browser. That's it — you're running a local LLM!
 
 **Other commands:**
 ```bash
-nexon status    # Check if server is running
-nexon logs      # View server logs
-nexon stop      # Stop the server
-nexon restart   # Restart with same model
+./nexon.py status                    # Check if server is running
+./nexon.py stop                      # Stop the server
+./nexon.py start -m <model> -c       # Run in foreground (console mode)
 ```
 
 ---
@@ -141,7 +138,7 @@ Options:
 Load your adapter alongside the base model:
 
 ```bash
-nexon -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter start
+./nexon.py start -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter
 ```
 
 That's it! Your model now incorporates your custom training.
@@ -152,7 +149,7 @@ You can merge the adapter into the base model to create a standalone model:
 
 ```bash
 ./tools/fuse.sh -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter -o ~/models/my-model
-nexon -m ~/models/my-model start
+./nexon.py start -m ~/models/my-model
 ```
 
 Note: Fusing with 4-bit quantized models may reduce quality. Loading the adapter at runtime (above) is usually better.
@@ -195,16 +192,17 @@ Quick text generation without starting the server:
 
 ```
 ┌─────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│   Web Browser   │ ←──→ │   nexon-server   │ ←──→ │   MLX + Model    │
-│  localhost:3000 │      │                  │      │  (Apple Silicon) │
+│   Web Browser   │ ←──→ │     nexon.py     │ ←──→ │   MLX + Model    │
+│  localhost:3000 │      │  (FastAPI + UI)  │      │  (Apple Silicon) │
 └─────────────────┘      └──────────────────┘      └──────────────────┘
 ```
 
-Nexon runs two things:
-1. **MLX inference server** — loads the model and generates text
-2. **Web server** — serves the chat UI and proxies requests
+Nexon is a single Python file that:
+1. Loads the model via MLX
+2. Provides an OpenAI-compatible API (`/v1/chat/completions`)
+3. Serves a clean web chat UI
 
-All processing happens on your Mac's GPU via Apple's MLX framework.
+All processing happens locally on your Mac's GPU via Apple's MLX framework.
 
 ---
 
@@ -218,8 +216,7 @@ Try a smaller model. Check the size column in the model table above.
 
 **Port already in use**
 ```bash
-nexon stop                # Stop any running instance
-nexon -p 8081 start      # Or use a different port
+./nexon.py stop           # Stop any running instance
 ```
 
 **Python not found**
@@ -231,9 +228,7 @@ Download from [python.org](https://www.python.org/downloads/)
 
 ```
 nexon/
-├── nexon.sh              # Main CLI
-├── nexon-server.py       # Web server
-├── install.sh            # Installer
+├── nexon.py              # Server (FastAPI + MLX)
 ├── tools/
 │   ├── train.sh          # Fine-tuning
 │   ├── convert.sh        # Model conversion
