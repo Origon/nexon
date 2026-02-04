@@ -371,12 +371,14 @@ When you need to perform an action, USE THE TOOLS."""
 
 def clean_special_tokens(text: str, strip: bool = True) -> str:
     """Remove special tokens like <|...|> and Harmony format markers"""
-    # Remove channel tags like <|message|>, <|channel|>, etc.
+    # Remove channel tags like <|message|>, <|channel|>, <|end|>, <|start|>, etc.
     text = re.sub(r'<\|[^|]*\|>', '', text)
     if '<|' in text:
         text = text.split('<|')[0]
-    # Strip Harmony format markers
+    # Strip Harmony format markers (start and end)
     text = re.sub(r'^analysis\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^assistant\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s*assistant$', '', text, flags=re.IGNORECASE)
     if 'assistantfinal' in text.lower():
         text = re.split(r'assistantfinal', text, flags=re.IGNORECASE)[-1]
     return text.strip() if strip else text
@@ -447,13 +449,21 @@ Formatting: Use **bold** for key terms. Use ```language blocks for code. Use ## 
             accumulated += token
 
             if not content_started:
-                # Buffer until we find assistantfinal (marks end of thinking)
+                # Buffer until we find content marker (various formats)
+                # Harmony: "assistantfinal", Channel tags: "<|channel|>final"
+                content_marker = None
                 if 'assistantfinal' in accumulated.lower():
+                    content_marker = 'assistantfinal'
+                elif '<|channel|>final' in accumulated.lower():
+                    content_marker = '<|channel|>final'
+
+                if content_marker:
                     content_started = True
-                    # Split into thinking and content
-                    parts = re.split(r'assistantfinal', accumulated, flags=re.IGNORECASE)
-                    thinking = clean_special_tokens(parts[0])
-                    content = parts[-1].strip() if len(parts) > 1 else ""
+                    # Split on the content marker
+                    parts = re.split(re.escape(content_marker), accumulated, flags=re.IGNORECASE)
+                    raw_thinking = parts[0]
+                    thinking = clean_special_tokens(raw_thinking)
+                    content = clean_special_tokens(parts[-1]) if len(parts) > 1 else ""
 
                     # Send thinking
                     if thinking:
