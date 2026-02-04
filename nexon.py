@@ -699,20 +699,28 @@ Configuration (edit nexon.py):
   CONTEXT = {CONTEXT}
 
 Examples:
-  ./nexon.py start -m ~/models/my-model      # Start in background
-  ./nexon.py start -m ~/models/my-model -c   # Start in foreground (console)
+  ./nexon.py -m ~/models/my-model            # Start in background
+  ./nexon.py -m ~/models/my-model -c         # Start in foreground (console)
   ./nexon.py stop                            # Stop server
   ./nexon.py status                          # Check status
 """
     )
-    parser.add_argument("command", choices=["start", "stop", "restart", "status"],
-                       help="Command to run")
+    parser.add_argument("command", nargs="?", choices=["start", "stop", "restart", "status"],
+                       help="Command to run (default: start if -m provided)")
     parser.add_argument("-m", "--model", help="Model path or HuggingFace ID")
     parser.add_argument("-a", "--adapter", help="LoRA adapter path")
     parser.add_argument("-c", "--console", action="store_true",
                        help="Run in foreground (console mode)")
 
     args = parser.parse_args()
+
+    # Default to start if -m provided
+    if not args.command:
+        if args.model:
+            args.command = "start"
+        else:
+            parser.print_help()
+            sys.exit(1)
 
     if args.command == "start":
         if not args.model:

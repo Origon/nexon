@@ -50,16 +50,16 @@ Browse all models: [mlx-community on HuggingFace](https://huggingface.co/mlx-com
 ### 3. Start Chatting
 
 ```bash
-./nexon.py start -m mlx-community/Qwen3-8B-4bit
+./nexon.py -m mlx-community/Qwen3-8B-4bit
 ```
 
 Open `http://localhost:3000` in your browser. That's it — you're running a local LLM!
 
 **Other commands:**
 ```bash
-./nexon.py status                    # Check if server is running
-./nexon.py stop                      # Stop the server
-./nexon.py start -m <model> -c       # Run in foreground (console mode)
+./nexon.py status              # Check if server is running
+./nexon.py stop                # Stop the server
+./nexon.py -m <model> -c       # Run in foreground (console mode)
 ```
 
 ---
@@ -138,7 +138,7 @@ Options:
 Load your adapter alongside the base model:
 
 ```bash
-./nexon.py start -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter
+./nexon.py -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter
 ```
 
 That's it! Your model now incorporates your custom training.
@@ -149,7 +149,7 @@ You can merge the adapter into the base model to create a standalone model:
 
 ```bash
 ./tools/fuse.sh -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter -o ~/models/my-model
-./nexon.py start -m ~/models/my-model
+./nexon.py -m ~/models/my-model
 ```
 
 Note: Fusing with 4-bit quantized models may reduce quality. Loading the adapter at runtime (above) is usually better.
