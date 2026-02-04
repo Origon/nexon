@@ -181,6 +181,15 @@ class ReasoningParser:
                 self.buffer = ""
                 return result
 
+            # Harmony format - model skipped analysis, went straight to final
+            if self.buffer.lower().startswith("assistantfinal"):
+                self.format = "harmony"
+                self.mode = "content"
+                result["content"] = re.sub(r'^assistantfinal\s*', '', self.buffer, flags=re.IGNORECASE)
+                result["thinking_done"] = True
+                self.buffer = ""
+                return result
+
             # Think tags
             if "<think>" in self.buffer:
                 self.format = "think_tags"
