@@ -173,10 +173,13 @@ class ReasoningParser:
                 return result
 
             # Harmony format (require delimiter to avoid false positives on "Analysis of...")
-            if re.match(r'^analysis\s*[\n:]', self.buffer, re.IGNORECASE):
+            # Also match analysis<|message|> variant
+            if re.match(r'^analysis\s*[\n:<|]', self.buffer, re.IGNORECASE):
                 self.format = "harmony"
                 self.mode = "thinking"
-                thinking = re.sub(r'^analysis\s*[\n:]?\s*', '', self.buffer, flags=re.IGNORECASE)
+                # Strip analysis prefix and any <|message|> tag
+                thinking = re.sub(r'^analysis\s*', '', self.buffer, flags=re.IGNORECASE)
+                thinking = re.sub(r'^<\|[^|]*\|>\s*', '', thinking)
                 result["thinking"] = thinking
                 self.buffer = ""
                 return result
@@ -368,13 +371,15 @@ When you need to perform an action, USE THE TOOLS."""
 
 def clean_special_tokens(text: str) -> str:
     """Remove special tokens like <|...|> and Harmony format markers"""
+    # Remove channel tags like <|message|>, <|channel|>, etc.
     text = re.sub(r'<\|[^|]*\|>', '', text)
     if '<|' in text:
         text = text.split('<|')[0]
-    # Strip Harmony format: "analysis...assistantfinal..." → extract content after assistantfinal
+    # Strip Harmony format markers
+    text = re.sub(r'^analysis\s*', '', text, flags=re.IGNORECASE)
     if 'assistantfinal' in text.lower():
-        text = re.split(r'assistantfinal', text, flags=re.IGNORECASE)[-1].lstrip()
-    return text
+        text = re.split(r'assistantfinal', text, flags=re.IGNORECASE)[-1]
+    return text.strip()
 
 
 # =============================================================================
@@ -435,44 +440,62 @@ Formatting: Use **bold** for key terms. Use ```language blocks for code. Use ## 
         messages.insert(0, system_prompt)
 
     async def generate():
-        parser = ReasoningParser()
-        thinking_done_sent = False
+        accumulated = ""
+        content_started = False
 
         for token in model_manager.generate_stream(messages, max_tokens):
-            parsed = parser.parse(token)
+            accumulated += token
 
-            # Send thinking
-            if parsed["thinking"]:
-                chunk = {"choices": [{"delta": {"thinking": parsed["thinking"]}}]}
-                yield f"data: {json.dumps(chunk)}\n\n"
+            if not content_started:
+                # Buffer until we find assistantfinal (marks end of thinking)
+                if 'assistantfinal' in accumulated.lower():
+                    content_started = True
+                    # Split into thinking and content
+                    parts = re.split(r'assistantfinal', accumulated, flags=re.IGNORECASE)
+                    thinking = clean_special_tokens(parts[0])
+                    content = parts[-1].strip() if len(parts) > 1 else ""
 
-            # Send thinking_done
-            if parsed["thinking_done"] and not thinking_done_sent:
-                chunk = {"choices": [{"delta": {"thinking_done": True}}]}
-                yield f"data: {json.dumps(chunk)}\n\n"
-                thinking_done_sent = True
+                    # Send thinking
+                    if thinking:
+                        chunk = {"choices": [{"delta": {"thinking": thinking}}]}
+                        yield f"data: {json.dumps(chunk)}\n\n"
 
-            # Send content
-            if parsed["content"]:
-                if not thinking_done_sent and parser.format == "plain":
+                    # Send thinking_done
                     chunk = {"choices": [{"delta": {"thinking_done": True}}]}
                     yield f"data: {json.dumps(chunk)}\n\n"
-                    thinking_done_sent = True
 
-                clean = clean_special_tokens(parsed["content"])
+                    # Send initial content
+                    if content:
+                        chunk = {"choices": [{"delta": {"content": content}}]}
+                        yield f"data: {json.dumps(chunk)}\n\n"
+
+                    accumulated = ""
+                # If no assistantfinal after 2000 chars, assume plain format
+                elif len(accumulated) > 2000:
+                    content_started = True
+                    chunk = {"choices": [{"delta": {"thinking_done": True}}]}
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                    content = clean_special_tokens(accumulated)
+                    if content:
+                        chunk = {"choices": [{"delta": {"content": content}}]}
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                    accumulated = ""
+            else:
+                # Stream content directly
+                clean = clean_special_tokens(token)
                 if clean:
                     chunk = {"choices": [{"delta": {"content": clean}}]}
                     yield f"data: {json.dumps(chunk)}\n\n"
 
         # Flush remaining
-        flushed = parser.flush()
-        if flushed["thinking"]:
-            chunk = {"choices": [{"delta": {"thinking": flushed["thinking"]}}]}
-            yield f"data: {json.dumps(chunk)}\n\n"
-        if flushed["content"]:
-            clean = clean_special_tokens(flushed["content"])
-            if clean:
-                chunk = {"choices": [{"delta": {"content": clean}}]}
+        if accumulated:
+            if not content_started:
+                # Short response without assistantfinal
+                chunk = {"choices": [{"delta": {"thinking_done": True}}]}
+                yield f"data: {json.dumps(chunk)}\n\n"
+            content = clean_special_tokens(accumulated)
+            if content:
+                chunk = {"choices": [{"delta": {"content": content}}]}
                 yield f"data: {json.dumps(chunk)}\n\n"
 
         yield 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
