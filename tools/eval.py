@@ -31,30 +31,43 @@ Examples:
 
     args = parser.parse_args()
 
+    # Convert local paths to absolute paths (mlx_lm requires this for local models)
+    model_path = args.model
+    model_p = Path(args.model)
+    # Check if it looks like a local path (starts with ./ or / or ~) or if it exists
+    if args.model.startswith(("./", "/", "~")) or model_p.exists():
+        model_path = str(model_p.expanduser().resolve())
+
+    data_path = str(Path(args.data).resolve())
+
+    adapter_path = None
+    if args.adapter and Path(args.adapter).exists():
+        adapter_path = str(Path(args.adapter).resolve())
+
     # Check if test.jsonl exists
-    test_file = Path(args.data) / "test.jsonl"
+    test_file = Path(data_path) / "test.jsonl"
     if not test_file.exists():
         print(f"Error: {test_file} not found")
         print("The data directory must contain a file named 'test.jsonl'")
         sys.exit(1)
 
     print("Evaluating model...")
-    print(f"  Model: {args.model}")
-    print(f"  Data: {args.data}")
-    if args.adapter:
-        print(f"  Adapter: {args.adapter}")
+    print(f"  Model: {model_path}")
+    print(f"  Data: {data_path}")
+    if adapter_path:
+        print(f"  Adapter: {adapter_path}")
     print()
 
     cmd = [
         sys.executable, "-m", "mlx_lm", "lora",
-        "--model", args.model,
-        "--data", args.data,
+        "--model", model_path,
+        "--data", data_path,
         "--test",
         "--batch-size", str(args.batch),
     ]
 
-    if args.adapter:
-        cmd.extend(["--adapter-path", args.adapter])
+    if adapter_path:
+        cmd.extend(["--adapter-path", adapter_path])
 
     result = subprocess.run(cmd)
     sys.exit(result.returncode)
