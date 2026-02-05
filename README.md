@@ -22,7 +22,7 @@ Run your own AI on Apple Silicon. A minimal toolkit for local LLMs with a clean 
 ```bash
 git clone https://github.com/Origon/nexon.git
 cd nexon
-pip3 install mlx-lm fastapi uvicorn
+pip3 install mlx-lm fastapi uvicorn datasets
 ```
 
 **Requirements:**
