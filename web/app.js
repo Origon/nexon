@@ -172,6 +172,10 @@ async function init() {
     // Initialize char counts
     updateCharCount(inputEmpty);
     updateCharCount(inputChat);
+
+    // Initialize button states (show mic, hide send when empty)
+    updateInputButtons(inputEmpty);
+    updateInputButtons(inputChat);
 }
 
 // Get active input
@@ -192,6 +196,7 @@ async function handleSubmit(e) {
     input.value = '';
     autoResizeTextarea(input);
     updateCharCount(input);
+    updateInputButtons(input);
 
     // Switch to chat state
     if (messages.length === 1) {
@@ -360,6 +365,8 @@ function resetChat() {
     autoResizeTextarea(inputChat);
     updateCharCount(inputEmpty);
     updateCharCount(inputChat);
+    updateInputButtons(inputEmpty);
+    updateInputButtons(inputChat);
 
     inputEmpty.focus();
 }
@@ -392,6 +399,23 @@ function exportChat() {
 function handleInput(e) {
     autoResizeTextarea(e.target);
     updateCharCount(e.target);
+    updateInputButtons(e.target);
+}
+
+// Update input buttons - show mic when empty, send when has text
+function updateInputButtons(textarea) {
+    const form = textarea.closest('form');
+    if (!form) return;
+
+    // Don't update if recording
+    if (isRecording && currentRecordingForm === form) return;
+
+    const hasText = textarea.value.trim().length > 0;
+    const micBtn = form.querySelector('.mic-btn');
+    const sendBtn = form.querySelector('.send-btn');
+
+    if (micBtn) micBtn.classList.toggle('hidden', hasText);
+    if (sendBtn) sendBtn.classList.toggle('hidden', !hasText);
 }
 
 // Update character count
@@ -457,9 +481,15 @@ function handleMessageClick(e) {
 function setGenerating(generating) {
     isGenerating = generating;
 
-    // Toggle send/stop buttons
+    // Toggle mic/send/stop buttons based on state
+    const activeInput = getActiveInput();
+    const hasText = activeInput.value.trim().length > 0;
+
+    document.querySelectorAll('.mic-btn').forEach(btn => {
+        btn.classList.toggle('hidden', generating || hasText);
+    });
     document.querySelectorAll('.send-btn').forEach(btn => {
-        btn.classList.toggle('hidden', generating);
+        btn.classList.toggle('hidden', generating || !hasText);
     });
     document.querySelectorAll('.stop-btn').forEach(btn => {
         btn.classList.toggle('hidden', !generating);
@@ -661,6 +691,10 @@ function escapeHtml(text) {
 // Speech Recognition
 let recognition = null;
 let isRecording = false;
+let recordingStartTime = null;
+let recordingTimerInterval = null;
+let currentRecordingForm = null;
+let recordingTranscript = '';
 
 function initSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -677,68 +711,138 @@ function initSpeechRecognition() {
 
     recognition.onresult = (event) => {
         let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
             transcript += event.results[i][0].transcript;
         }
-
-        // Get the active input field
-        const activeInput = document.activeElement.tagName === 'TEXTAREA'
-            ? document.activeElement
-            : (emptyState.classList.contains('hidden') ? inputChat : inputEmpty);
-
-        // Update with transcript
-        if (activeInput) {
-            activeInput.value = transcript;
-            activeInput.dispatchEvent(new Event('input'));
-        }
+        recordingTranscript = transcript;
     };
 
     recognition.onend = () => {
         if (isRecording) {
             // Restart if still recording (browser may stop after silence)
-            recognition.start();
+            try {
+                recognition.start();
+            } catch (e) {}
         }
     };
 
     recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
-        stopRecording();
+        cancelRecording();
     };
+
+    // Set up recording UI handlers
+    document.querySelectorAll('.recording-cancel').forEach(btn => {
+        btn.addEventListener('click', cancelRecording);
+    });
+
+    document.querySelectorAll('.recording-confirm').forEach(btn => {
+        btn.addEventListener('click', confirmRecording);
+    });
 }
 
-function startRecording(btn) {
-    if (!recognition) return;
+function startRecording(form) {
+    if (!recognition || isRecording) return;
 
     isRecording = true;
-    btn.classList.add('recording');
+    currentRecordingForm = form;
+    recordingTranscript = '';
+    recordingStartTime = Date.now();
+
+    // Hide textarea and input-actions, show recording UI
+    const textarea = form.querySelector('textarea');
+    const inputActions = form.querySelector('.input-actions');
+    const recordingUI = form.querySelector('.recording-ui');
+
+    if (textarea) textarea.style.display = 'none';
+    if (inputActions) inputActions.classList.add('hidden');
+    if (recordingUI) recordingUI.classList.remove('hidden');
+
+    // Start timer
+    updateRecordingTimer();
+    recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
 
     try {
         recognition.start();
-    } catch (e) {
-        // Already started
+    } catch (e) {}
+}
+
+function updateRecordingTimer() {
+    if (!currentRecordingForm || !recordingStartTime) return;
+
+    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    const timerEl = currentRecordingForm.querySelector('.recording-timer');
+    if (timerEl) {
+        timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
 }
 
-function stopRecording() {
-    if (!recognition) return;
+function cancelRecording() {
+    if (!isRecording) return;
 
     isRecording = false;
-    document.querySelectorAll('.mic-btn').forEach(btn => btn.classList.remove('recording'));
+    clearInterval(recordingTimerInterval);
 
     try {
         recognition.stop();
-    } catch (e) {
-        // Already stopped
+    } catch (e) {}
+
+    // Restore UI
+    if (currentRecordingForm) {
+        const textarea = currentRecordingForm.querySelector('textarea');
+        const inputActions = currentRecordingForm.querySelector('.input-actions');
+        const recordingUI = currentRecordingForm.querySelector('.recording-ui');
+        const timerEl = currentRecordingForm.querySelector('.recording-timer');
+
+        if (textarea) textarea.style.display = '';
+        if (inputActions) inputActions.classList.remove('hidden');
+        if (recordingUI) recordingUI.classList.add('hidden');
+        if (timerEl) timerEl.textContent = '0:00';
     }
+
+    currentRecordingForm = null;
+    recordingTranscript = '';
+}
+
+function confirmRecording() {
+    if (!isRecording || !currentRecordingForm) return;
+
+    isRecording = false;
+    clearInterval(recordingTimerInterval);
+
+    try {
+        recognition.stop();
+    } catch (e) {}
+
+    // Get textarea and set value
+    const textarea = currentRecordingForm.querySelector('textarea');
+    const inputActions = currentRecordingForm.querySelector('.input-actions');
+    const recordingUI = currentRecordingForm.querySelector('.recording-ui');
+    const timerEl = currentRecordingForm.querySelector('.recording-timer');
+
+    if (textarea && recordingTranscript) {
+        textarea.value = recordingTranscript;
+        textarea.dispatchEvent(new Event('input'));
+    }
+
+    // Restore UI
+    if (textarea) textarea.style.display = '';
+    if (inputActions) inputActions.classList.remove('hidden');
+    if (recordingUI) recordingUI.classList.add('hidden');
+    if (timerEl) timerEl.textContent = '0:00';
+
+    currentRecordingForm = null;
+    recordingTranscript = '';
 }
 
 // Set up mic button handlers
 document.querySelectorAll('.mic-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        if (isRecording) {
-            stopRecording();
-        } else {
-            startRecording(btn);
+        const form = btn.closest('form');
+        if (form) {
+            startRecording(form);
         }
     });
 });

@@ -446,9 +446,8 @@ Formatting: Use **bold** for key terms. Use ```language blocks for code. Use ## 
         content_started = False
 
         for token in model_manager.generate_stream(messages, max_tokens):
-            accumulated += token
-
             if not content_started:
+                accumulated += token
                 # Buffer until we find content marker (various formats)
                 # Harmony: "assistantfinal", Channel tags: "<|channel|>final"
                 content_marker = None
@@ -540,7 +539,9 @@ async def chat_completions(request: Request):
             harmony_found = False
 
             for token in model_manager.generate_stream(messages, max_tokens):
-                accumulated += token
+                # Only accumulate when needed (detection phase or tools mode)
+                if tools or not harmony_found:
+                    accumulated += token
 
                 if not tools:
                     # Buffer until we find "assistantfinal" (Harmony format)

@@ -45,7 +45,7 @@
                   <line x1="8" y1="23" x2="16" y2="23"/>
                 </svg>
               </button>
-              <button type="submit" class="send-btn" aria-label="Send">
+              <button type="submit" class="send-btn hidden" aria-label="Send">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
                   <path d="M12 20.25V4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   <path d="M5.75 10L12 3.75L18.25 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -54,6 +54,24 @@
               <button type="button" class="stop-btn hidden" aria-label="Stop">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="6" y="6" width="12" height="12" rx="2"/>
+                </svg>
+              </button>
+            </div>
+            <!-- Recording UI -->
+            <div class="recording-ui hidden">
+              <button type="button" class="recording-cancel" aria-label="Cancel recording">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+              <div class="recording-indicator">
+                <span class="recording-dot"></span>
+                <span class="recording-timer">0:00</span>
+              </div>
+              <button type="button" class="recording-confirm" aria-label="Confirm recording">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </button>
             </div>
@@ -120,7 +138,7 @@
                     <line x1="8" y1="23" x2="16" y2="23"/>
                   </svg>
                 </button>
-                <button type="submit" class="send-btn" aria-label="Send">
+                <button type="submit" class="send-btn hidden" aria-label="Send">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
                     <path d="M12 20.25V4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M5.75 10L12 3.75L18.25 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -129,6 +147,24 @@
                 <button type="button" class="stop-btn hidden" aria-label="Stop">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
+                </button>
+              </div>
+              <!-- Recording UI -->
+              <div class="recording-ui hidden">
+                <button type="button" class="recording-cancel" aria-label="Cancel recording">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+                <div class="recording-indicator">
+                  <span class="recording-dot"></span>
+                  <span class="recording-timer">0:00</span>
+                </div>
+                <button type="button" class="recording-confirm" aria-label="Confirm recording">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
                   </svg>
                 </button>
               </div>
