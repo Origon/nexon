@@ -26,7 +26,7 @@ pip3 install mlx-lm fastapi uvicorn datasets
 ```
 
 **Requirements:**
-- macOS with Apple Silicon (M1/M2/M3/M4/M5)
+- macOS with Apple Silicon
 - Python 3.12+ — download from [python.org](https://www.python.org/downloads/)
 - 8GB+ RAM (16GB+ recommended for larger models)
 
