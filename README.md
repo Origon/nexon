@@ -57,9 +57,10 @@ Open `http://localhost:3000` in your browser. That's it — you're running a loc
 
 **Other commands:**
 ```bash
-./nexon.py status              # Check if server is running
-./nexon.py stop                # Stop the server
-./nexon.py -m <model> -c       # Run in foreground (console mode)
+./nexon.py status                        # Check if server is running
+./nexon.py stop                          # Stop the server
+./nexon.py -m <model> -c                 # Run in foreground (console mode)
+./nexon.py -m <model> -a ./adapters/x    # Load with a LoRA adapter
 ```
 
 ---
