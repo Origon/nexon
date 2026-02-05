@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Apple%20Silicon-Native-black?logo=apple" alt="Apple Silicon">
-  <img src="https://img.shields.io/badge/Python-3.12+-blue?logo=python" alt="Python">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
+  <img src="https://img.pyields.io/badge/Apple%20Silicon-Native-black?logo=apple" alt="Apple Silicon">
+  <img src="https://img.pyields.io/badge/Python-3.12+-blue?logo=python" alt="Python">
+  <img src="https://img.pyields.io/badge/License-MIT-green" alt="License">
 </p>
 
 # Nexon — Your Personal AI Toolkit
@@ -98,14 +98,14 @@ Save as `data/train.jsonl`. Optionally create `data/valid.jsonl` with 10-20% of 
 ### Step 2: Train
 
 ```bash
-./tools/train.sh -m mlx-community/Qwen3-8B-4bit -d ./data -o ./adapters/my-adapter
+./tools/train.py -m mlx-community/Qwen3-8B-4bit -d ./data -o ./adapters/my-adapter
 ```
 
 Training creates an "adapter" — a small file that modifies the base model's behavior without changing the original weights.
 
 **Training options:**
 ```bash
-./tools/train.sh [OPTIONS]
+./tools/train.py [OPTIONS]
 
 Required:
   -m, --model PATH      Base model (HuggingFace ID or local path)
@@ -124,7 +124,7 @@ Options:
 
 **Example with more options:**
 ```bash
-./tools/train.sh \
+./tools/train.py \
     -m mlx-community/Qwen3-8B-4bit \
     -d ./data \
     -o ./adapters/my-adapter \
@@ -148,7 +148,7 @@ That's it! Your model now incorporates your custom training.
 You can merge the adapter into the base model to create a standalone model:
 
 ```bash
-./tools/fuse.sh -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter -o ~/models/my-model
+./tools/fuse.py -m mlx-community/Qwen3-8B-4bit -a ./adapters/my-adapter -o ~/models/my-model
 ./nexon.py -m ~/models/my-model
 ```
 
@@ -164,10 +164,10 @@ Download any HuggingFace model and convert it for MLX:
 
 ```bash
 # 4-bit quantization (smallest, recommended)
-./tools/convert.sh -m meta-llama/Llama-3.2-3B-Instruct -o ~/models/llama-4bit
+./tools/convert.py -m meta-llama/Llama-3.2-3B-Instruct -o ~/models/llama-4bit
 
 # 8-bit quantization (better quality, larger)
-./tools/convert.sh -m mistralai/Mistral-7B-v0.3 -o ~/models/mistral-8bit -q 8
+./tools/convert.py -m mistralai/Mistral-7B-v0.3 -o ~/models/mistral-8bit -q 8
 ```
 
 ### Evaluate a Model
@@ -175,7 +175,7 @@ Download any HuggingFace model and convert it for MLX:
 Test perplexity on your dataset:
 
 ```bash
-./tools/eval.sh -m ~/models/my-model -d ./data
+./tools/eval.py -m ~/models/my-model -d ./data
 ```
 
 ### Generate from CLI
@@ -183,7 +183,7 @@ Test perplexity on your dataset:
 Quick text generation without starting the server:
 
 ```bash
-./tools/generate.sh -m mlx-community/Qwen3-8B-4bit "Explain quantum computing"
+./tools/generate.py -m mlx-community/Qwen3-8B-4bit "Explain quantum computing"
 ```
 
 ---
@@ -230,11 +230,11 @@ Download from [python.org](https://www.python.org/downloads/)
 nexon/
 ├── nexon.py              # Server (FastAPI + MLX)
 ├── tools/
-│   ├── train.sh          # Fine-tuning
-│   ├── convert.sh        # Model conversion
-│   ├── eval.sh           # Evaluation
-│   ├── generate.sh       # CLI generation
-│   └── fuse.sh           # Merge adapters
+│   ├── train.py          # Fine-tuning
+│   ├── convert.py        # Model conversion
+│   ├── eval.py           # Evaluation
+│   ├── generate.py       # CLI generation
+│   └── fuse.py           # Merge adapters
 └── web/
     ├── index.html
     ├── app.js
